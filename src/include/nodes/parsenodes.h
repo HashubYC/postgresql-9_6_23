@@ -1290,9 +1290,9 @@ typedef struct SelectStmt
 								 * lcons(NIL,NIL) for all (SELECT DISTINCT) */
 	IntoClause *intoClause;		/* SELECT INTO 的目标  target for SELECT INTO */
 	List	   *targetList;		/* 结果目标列表 the target list (of ResTarget) */
-	List	   *fromClause;		/* FROM 字句 the FROM clause */
+	List	   *fromClause;		/* FROM 子句 the FROM clause */
 	Node	   *whereClause;	/* WHERE 限定条件 WHERE qualification */
-	List	   *groupClause;	/* GROUP BY 字句 GROUP BY clauses */
+	List	   *groupClause;	/* GROUP BY 子句 GROUP BY clauses */
 	Node	   *havingClause;	/* HAVING 条件表达式 HAVING conditional-expression */
 	List	   *windowClause;	/* WINDOW window_name AS (...), ... */
 
@@ -1316,18 +1316,19 @@ typedef struct SelectStmt
 	 * SelectStmts.
 	 */
 	List	   *sortClause;		/* 排序字句(排序依据的列表) sort clause (a list of SortBy's) */
-	Node	   *limitOffset;	/*  # of result tuples to skip */
-	Node	   *limitCount;		/* # of result tuples to return */
-	List	   *lockingClause;	/* FOR UPDATE (list of LockingClause's) */
-	WithClause *withClause;		/* WITH clause */
+	Node	   *limitOffset;	/* 需要跳过的元组数据 # of result tuples to skip */
+	Node	   *limitCount;		/* 需要返回的元组数据 # of result tuples to return */
+	List	   *lockingClause;	/* FOR UPDATE (锁子句的列表) FOR UPDATE (list of LockingClause's) */
+	WithClause *withClause;		/* WITH 子句 WITH clause */
 
 	/*
+	 * 这些字段只会在上层的 SelectStmts 中出现
 	 * These fields are used only in upper-level SelectStmts.
 	 */
-	SetOperation op;			/* type of set op */
-	bool		all;			/* ALL specified? */
-	struct SelectStmt *larg;	/* left child */
-	struct SelectStmt *rarg;	/* right child */
+	SetOperation op;			/* set 操作的类型 type of set op */
+	bool		all;			/* 是否指明 ALL 选项 ALL specified? */
+	struct SelectStmt *larg;	/* 左子节点 left child */
+	struct SelectStmt *rarg;	/* 右子节点 right child */
 	/* Eventually add fields for CORRESPONDING spec here */
 } SelectStmt;
 
