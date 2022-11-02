@@ -569,31 +569,45 @@ typedef struct RelOptInfo
 
 /*
  * IndexOptInfo
- *		Per-index information for planning/optimization
+ *		用于计划/优化的信息，每个索引对应一个。 Per-index information for planning/optimization
  *
- *		indexkeys[], indexcollations[], opfamily[], and opcintype[]
+ *		indexkeys[], indexcollations[], opfamily[], 以及 opcintype[] 每个字段都有 ncolumns 个项.
+ * 		indexkeys[], indexcollations[], opfamily[], and opcintype[]
  *		each have ncolumns entries.
  *
- *		sortopfamily[], reverse_sort[], and nulls_first[] likewise have
+ *		sortopfamily[], reverse_sort[], 以及 nulls_first[] 类似，也都有
+ *      ncolumns 个项, 当且仅当该索引是有序的，否则这些指针都为空。
+ * 		sortopfamily[], reverse_sort[], and nulls_first[] likewise have
  *		ncolumns entries, if the index is ordered; but if it is unordered,
  *		those pointers are NULL.
  *
- *		Zeroes in the indexkeys[] array indicate index columns that are
+ *		indexkeys[] 数组中的零值表示该索引列是一个表达式，而每个这种列在indexprs
+ *      中都会有一个对应的元素。
+ * 		Zeroes in the indexkeys[] array indicate index columns that are
  *		expressions; there is one element in indexprs for each such column.
  *
- *		For an ordered index, reverse_sort[] and nulls_first[] describe the
+ *		对于有序索引，reverse_sort[] 以及 nulls_first[] 描述了正向索引扫描时
+ *      索引的排序顺序。当进行反向索引扫描时，就会产生相反的顺序。
+ * 		For an ordered index, reverse_sort[] and nulls_first[] describe the
  *		sort ordering of a forward indexscan; we can also consider a backward
  *		indexscan, which will generate the reverse ordering.
  *
- *		The indexprs and indpred expressions have been run through
+ *		indexprs 与 indpred 会通过 prepqual.c 中的 eval_const_expressions() 
+ *      用于简单地与WHERE子句匹配，indpred使用简单的合取范式。
+ * 		The indexprs and indpred expressions have been run through
  *		prepqual.c and eval_const_expressions() for ease of matching to
  *		WHERE clauses. indpred is in implicit-AND form.
  *
- *		indextlist is a TargetEntry list representing the index columns.
+ *		indextlist 是 TargetEntry的列表，标识着索引建在哪些列上。对于简单的列，
+ *      它会提供基本关系中与之对应的Var，对于表达式列，它还会指向indexprs对应元素。
+ *      相对应的Var。
+ * 		indextlist is a TargetEntry list representing the index columns.
  *		It provides an equivalent base-relation Var for each simple column,
  *		and links to the matching indexprs element for each expression column.
  *
- *		While most of these fields are filled when the IndexOptInfo is created
+ *		当 IndexOptInfo 创建时，这里大多数字段都会被填充 (plancat.c)，但 indrestrictinfo 
+ *      与 predOK 会在稍后通过 check_index_predicates() 设置。
+ * 		While most of these fields are filled when the IndexOptInfo is created
  *		(by plancat.c), indrestrictinfo and predOK are set later, in
  *		check_index_predicates().
  */
@@ -601,53 +615,53 @@ typedef struct IndexOptInfo
 {
 	NodeTag		type;
 
-	Oid			indexoid;		/* OID of the index relation */
-	Oid			reltablespace;	/* tablespace of index (not table) */
-	RelOptInfo *rel;			/* back-link to index's table */
+	Oid			indexoid;		/* 索引关系的OID OID of the index relation */
+	Oid			reltablespace;	/* 索引所属的表空间 (不是表)  tablespace of index (not table) */
+	RelOptInfo *rel;			/* 索引对应的表，反向链接 back-link to index's table */
 
-	/* index-size statistics (from pg_class and elsewhere) */
-	BlockNumber pages;			/* number of disk pages in index */
-	double		tuples;			/* number of index tuples in index */
-	int			tree_height;	/* index tree height, or -1 if unknown */
+	/* 索引尺寸的统计 (来自pg_class和其他地方) index-size statistics (from pg_class and elsewhere) */
+	BlockNumber pages;			/* 索引中的磁盘页面数 number of disk pages in index */
+	double		tuples;			/* 索引中的元组数量 number of index tuples in index */
+	int			tree_height;	/* 索引树的高度，未知则为 -1 index tree height, or -1 if unknown */
 
-	/* index descriptor information */
-	int			ncolumns;		/* number of columns in index */
-	int		   *indexkeys;		/* column numbers of index's keys, or 0 */
-	Oid		   *indexcollations;	/* OIDs of collations of index columns */
-	Oid		   *opfamily;		/* OIDs of operator families for columns */
-	Oid		   *opcintype;		/* OIDs of opclass declared input data types */
-	Oid		   *sortopfamily;	/* OIDs of btree opfamilies, if orderable */
-	bool	   *reverse_sort;	/* is sort order descending? */
-	bool	   *nulls_first;	/* do NULLs come first in the sort order? */
-	bool	   *canreturn;		/* which index cols can be returned in an
+	/* 索引描述符信息 index descriptor information */
+	int			ncolumns;		/* 索引中列的数量 number of columns in index */
+	int		   *indexkeys;		/* 索引中列的序号，或者0 column numbers of index's keys, or 0 */
+	Oid		   *indexcollations;	/* 索引列上排序规则的OID    OIDs of collations of index columns */
+	Oid		   *opfamily;		/* 列上运算符族的OID OIDs of operator families for columns */
+	Oid		   *opcintype;		/* 运算符族输入数据类型的OID OIDs of opclass declared input data types */
+	Oid		   *sortopfamily;	/* 如果这些列有序，B树算子族的OID OIDs of btree opfamilies, if orderable */
+	bool	   *reverse_sort;	/* 排序顺序是反向降序的吗 is sort order descending? */
+	bool	   *nulls_first;	/* 排序顺序中，空值是排在最前面的吗 do NULLs come first in the sort order? */
+	bool	   *canreturn;		/* 在仅索引扫描中，哪些索引列可以被返回 which index cols can be returned in an
 								 * index-only scan? */
-	Oid			relam;			/* OID of the access method (in pg_am) */
+	Oid			relam;			/* 访问方法的OID (在 pg_am 中) OID of the access method (in pg_am) */
 
-	List	   *indexprs;		/* expressions for non-simple index columns */
-	List	   *indpred;		/* predicate if a partial index, else NIL */
+	List	   *indexprs;		/* 非平凡的索引列，即表达式 expressions for non-simple index columns */
+	List	   *indpred;		/* 如果是部分索引，则为谓词，否则为空 predicate if a partial index, else NIL */
 
-	List	   *indextlist;		/* targetlist representing index columns */
+	List	   *indextlist;		/* 表示索引列的目标列表 targetlist representing index columns */
 
-	List	   *indrestrictinfo;/* parent relation's baserestrictinfo list,
+	List	   *indrestrictinfo;/* 父关系的baserestrictinfo列表 parent relation's baserestrictinfo list,
 								 * less any conditions implied by the index's
 								 * predicate (unless it's a target rel, see
 								 * comments in check_index_predicates()) */
 
-	bool		predOK;			/* true if index predicate matches query */
-	bool		unique;			/* true if a unique index */
-	bool		immediate;		/* is uniqueness enforced immediately? */
-	bool		hypothetical;	/* true if index doesn't really exist */
+	bool		predOK;			/* 如果查询与索引谓词匹配则为真 true if index predicate matches query */
+	bool		unique;			/* 唯一索引则为真 true if a unique index */
+	bool		immediate;		/* 唯一约束是否是立即强制实施的 is uniqueness enforced immediately? */
+	bool		hypothetical;	/* 如果索引并非真实存在则为真(虚拟索引) true if index doesn't really exist */
 
-	/* Remaining fields are copied from the index AM's API struct: */
-	bool		amcanorderbyop; /* does AM support order by operator result? */
-	bool		amoptionalkey;	/* can query omit key for the first column? */
-	bool		amsearcharray;	/* can AM handle ScalarArrayOpExpr quals? */
-	bool		amsearchnulls;	/* can AM search for NULL/NOT NULL entries? */
-	bool		amhasgettuple;	/* does AM have amgettuple interface? */
-	bool		amhasgetbitmap; /* does AM have amgetbitmap interface? */
+	/* 剩下这些字段是从索引访问方法的API结构里复制过来的 Remaining fields are copied from the index AM's API struct: */
+	bool		amcanorderbyop; /* 访问方法是否支持按算子结果排序 does AM support order by operator result? */
+	bool		amoptionalkey;	/* 查询是否可以忽略第一列中的键 can query omit key for the first column? */
+	bool		amsearcharray;	/* 访问方法是否能处理ScalarArrayOpExpr限定条件 can AM handle ScalarArrayOpExpr quals? */
+	bool		amsearchnulls;	/* 访问方法是否能搜索空项或非空项 can AM search for NULL/NOT NULL entries? */
+	bool		amhasgettuple;	/* 访问方法是否有amgettuple接口 does AM have amgettuple interface? */
+	bool		amhasgetbitmap; /* 访问方法是否有amgetbitmap接口 does AM have amgetbitmap interface? */
 	bool		amcanmarkpos;	/* does AM support mark/restore? */
-	/* Rather than include amapi.h here, we declare amcostestimate like this */
-	void		(*amcostestimate) ();	/* AM's cost estimator */
+	/* 相比 include amapi.h，我们直接在这里用这种方式声明 amcostestimate。 Rather than include amapi.h here, we declare amcostestimate like this */
+	void		(*amcostestimate) ();	/* 访问方法的代价估计器 AM's cost estimator */
 } IndexOptInfo;
 
 /*
