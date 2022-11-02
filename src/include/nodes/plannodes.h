@@ -27,10 +27,10 @@
  */
 
 /* ----------------
- *		PlannedStmt node
+ *		PlannedStmt 节点 PlannedStmt node
  *
- * The output of the planner is a Plan tree headed by a PlannedStmt node.
- * PlannedStmt holds the "one time" information needed by the executor.
+ * 计划器的输出是一颗计划树，PlannedStmt是计划树的根节点。The output of the planner is a Plan tree headed by a PlannedStmt node.
+ * PlannedStmt存储着执行器所需的“一次性”信息。 PlannedStmt holds the "one time" information needed by the executor.
  * ----------------
  */
 typedef struct PlannedStmt
@@ -39,40 +39,40 @@ typedef struct PlannedStmt
 
 	CmdType		commandType;	/* select|insert|update|delete */
 
-	uint32		queryId;		/* query identifier (copied from Query) */
+	uint32		queryId;		/* 询标识符 (复制自Query) query identifier (copied from Query) */
 
-	bool		hasReturning;	/* is it insert|update|delete RETURNING? */
+	bool		hasReturning;	/* 增|删|改 是否带有RETURNING is it insert|update|delete RETURNING? */
 
-	bool		hasModifyingCTE;	/* has insert|update|delete in WITH? */
+	bool		hasModifyingCTE;	/* WITH子句中是否出现了增|删|改 has insert|update|delete in WITH? */
 
-	bool		canSetTag;		/* do I set the command result tag? */
+	bool		canSetTag;		/* 我是否设置了命令结果标记 do I set the command result tag? */
 
-	bool		transientPlan;	/* redo plan when TransactionXmin changes? */
+	bool		transientPlan;	/* 当TransactionXmin变化时重新进行计划 redo plan when TransactionXmin changes? */
 
-	bool		dependsOnRole;	/* is plan specific to current role? */
+	bool		dependsOnRole;	/* 执行计划是否特定于当前的角色 is plan specific to current role? */
 
-	bool		parallelModeNeeded;		/* parallel mode required to execute? */
+	bool		parallelModeNeeded;		/* 需要并行模式才能执行 parallel mode required to execute? */
 
-	struct Plan *planTree;		/* tree of Plan nodes */
+	struct Plan *planTree;		/* 计划节点树 tree of Plan nodes */
 
-	List	   *rtable;			/* list of RangeTblEntry nodes */
+	List	   *rtable;			/* RangeTblEntry节点的列表 list of RangeTblEntry nodes */
 
-	/* rtable indexes of target relations for INSERT/UPDATE/DELETE */
-	List	   *resultRelations;	/* integer list of RT indexes, or NIL */
+	/* 目标关系上用于增|删|改的范围表索引 rtable indexes of target relations for INSERT/UPDATE/DELETE */
+	List	   *resultRelations;	/* RT索引的整数列表, 或NIL integer list of RT indexes, or NIL */
 
-	Node	   *utilityStmt;	/* non-null if this is DECLARE CURSOR */
+	Node	   *utilityStmt;	/* 如为DECLARE CURSOR则非空 non-null if this is DECLARE CURSOR */
 
-	List	   *subplans;		/* Plan trees for SubPlan expressions */
+	List	   *subplans;		/* SubPlan表达式的计划树 expressions Plan trees for SubPlan expressions */
 
-	Bitmapset  *rewindPlanIDs;	/* indices of subplans that require REWIND */
+	Bitmapset  *rewindPlanIDs;	/* 需要REWIND的子计划的索引序号 indices of subplans that require REWIND */
 
-	List	   *rowMarks;		/* a list of PlanRowMark's */
+	List	   *rowMarks;		/* PlanRowMark 列表 a list of PlanRowMark's */
 
-	List	   *relationOids;	/* OIDs of relations the plan depends on */
+	List	   *relationOids;	/* 计划所依赖的关系OID列表 OIDs of relations the plan depends on */
 
-	List	   *invalItems;		/* other dependencies, as PlanInvalItems */
+	List	   *invalItems;		/* 其他依赖，诸如PlanInvalItems other dependencies, as PlanInvalItems */
 
-	int			nParamExec;		/* number of PARAM_EXEC Params used */
+	int			nParamExec;		/* 使用的PARAM_EXEC参数数量 number of PARAM_EXEC Params used */
 } PlannedStmt;
 
 /* macro for fetching the Plan associated with a SubPlan node */
@@ -81,13 +81,16 @@ typedef struct PlannedStmt
 
 
 /* ----------------
- *		Plan node
+ *		计划节点(Plan Node) Plan node
  *
+ * 所有的计划节点都"派生"自Plan结构，将其作为自己的第一个字段。这样确保了当其强制转换为Plan
+ * 结构时所有东西都能正常工作。(当作为通用参数传入执行器时，节点指针会很频繁地转换为Plan*)
  * All plan nodes "derive" from the Plan structure by having the
  * Plan structure as the first field.  This ensures that everything works
  * when nodes are cast to Plan's.  (node pointers are frequently cast to Plan*
  * when passed around generically in the executor)
  *
+ * 我们从来不会真的去实例化任何Plan节点，它只是所有Plan类型节点的公共抽象父类。
  * We never actually instantiate any Plan nodes; this is just the common
  * abstract superclass for all Plan-type nodes.
  * ----------------
@@ -97,40 +100,45 @@ typedef struct Plan
 	NodeTag		type;
 
 	/*
-	 * estimated execution costs for plan (see costsize.c for more info)
+	 * 计划的预估执行开销 ( 详情见 costsize.c )。 estimated execution costs for plan (see costsize.c for more info)
 	 */
-	Cost		startup_cost;	/* cost expended before fetching any tuples */
-	Cost		total_cost;		/* total cost (assuming all tuples fetched) */
+	Cost		startup_cost;	/* 获取第一条元组前的代价 cost expended before fetching any tuples */
+	Cost		total_cost;		/* 获取所有元组的代价 total cost (assuming all tuples fetched) */
 
 	/*
-	 * planner's estimate of result size of this plan step
+	 * 计划器对该计划步骤返回结果大小的估计 planner's estimate of result size of this plan step
 	 */
-	double		plan_rows;		/* number of rows plan is expected to emit */
-	int			plan_width;		/* average row width in bytes */
+	double		plan_rows;		/* 计划预期产出的行数 number of rows plan is expected to emit */
+	int			plan_width;		/* 以字节计的行宽 average row width in bytes */
 
 	/*
-	 * information needed for parallel query
+	 * 并行查询所需的信息 information needed for parallel query
 	 */
-	bool		parallel_aware; /* engage parallel-aware logic? */
+	bool		parallel_aware; /* 是否涉及到并行逻辑 engage parallel-aware logic? */
 
 	/*
-	 * Common structural data for all Plan types.
+	 * 所有计划类型的公有结构化数据 Common structural data for all Plan types.
 	 */
-	int			plan_node_id;	/* unique across entire final plan tree */
-	List	   *targetlist;		/* target list to be computed at this node */
-	List	   *qual;			/* implicitly-ANDed qual conditions */
-	struct Plan *lefttree;		/* input plan tree(s) */
+	int			plan_node_id;	/* 在整个计划树范围内唯一的标识 unique across entire final plan tree */
+	List	   *targetlist;		/* 该节点需要计算的目标列表 target list to be computed at this node */
+	List	   *qual;			/* 隐式合取化处理的 限制条件 列表 implicitly-ANDed qual conditions */
+	struct Plan *lefttree;		/* 输入的查询树 input plan tree(s) */
 	struct Plan *righttree;
-	List	   *initPlan;		/* Init Plan nodes (un-correlated expr
+	List	   *initPlan;		/* Init Plan 节点 (无关子查询表达式) Init Plan nodes (un-correlated expr
 								 * subselects) */
 
 	/*
+	 * “参数变化驱动”的重扫描 相关的管理信息
 	 * Information for management of parameter-change-driven rescanning
 	 *
+	 * extParam包含着所有外部PARAM_EXEC参数的参数ID列表，这些参数会影响当前计划节点
+     * 及其子节点。这里不包括该节点initPlans时setParam的相关参数，但会包括其extParams。
 	 * extParam includes the paramIDs of all external PARAM_EXEC params
-	 * affecting this plan node or its children.  setParam params from the
+	 * affecting this plan node or its children. setParam params from the
 	 * node's initPlans are not included, but their extParams are.
 	 *
+	 * allParam包含了所有extParam的参数ID列表，以及影响当前节点的参数ID。（即，
+     * 在initPlans中setParams的参数）。注意这里包含了*所有*会影响本节点的PARAM_EXEC参数
 	 * allParam includes all the extParam paramIDs, plus the IDs of local
 	 * params that affect the node (i.e., the setParams of its initplans).
 	 * These are _all_ the PARAM_EXEC params that affect this node.
@@ -277,17 +285,17 @@ typedef struct BitmapOr
 
 /*
  * ==========
- * Scan nodes
+ * 扫描节点(Scan nodes) Scan nodes
  * ==========
  */
 typedef struct Scan
 {
 	Plan		plan;
-	Index		scanrelid;		/* relid is index into the range table */
+	Index		scanrelid;		/* relid 是访问范围表的索引 relid is index into the range table */
 } Scan;
 
 /* ----------------
- *		sequential scan node
+ *		顺序扫描节点 sequential scan node
  * ----------------
  */
 typedef Scan SeqScan;
