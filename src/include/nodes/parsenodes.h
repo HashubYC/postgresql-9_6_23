@@ -109,59 +109,63 @@ typedef struct Query
 
 	CmdType		commandType;	/* select|insert|update|delete|utility */
 
-	QuerySource querySource;	/* where did I come from? */
+	QuerySource querySource;	/* 我来自哪里 where did I come from? */
 
-	uint32		queryId;		/* query identifier (can be set by plugins) */
+	uint32		queryId;		/* 查询标识符(可由插件配置) query identifier (can be set by plugins) */
 
-	bool		canSetTag;		/* do I set the command result tag? */
+	bool		canSetTag;		/* 我设置了命令结果标签吗 do I set the command result tag? */
 
-	Node	   *utilityStmt;	/* non-null if this is DECLARE CURSOR or a
+	Node	   *utilityStmt;	/* 这是一条 DECLARE CURSOR 或不可优化的语句
+							     * non-null if this is DECLARE CURSOR or a
 								 * non-optimizable statement */
 
-	int			resultRelation; /* rtable index of target relation for
+	int			resultRelation; /* 对增删改语句而言是目标关系的索引，SELECT 为 0 
+								 * rtable index of target relation for
 								 * INSERT/UPDATE/DELETE; 0 for SELECT */
 
-	bool		hasAggs;		/* has aggregates in tlist or havingQual */
-	bool		hasWindowFuncs; /* has window functions in tlist */
-	bool		hasSubLinks;	/* has subquery SubLink */
-	bool		hasDistinctOn;	/* distinctClause is from DISTINCT ON */
-	bool		hasRecursive;	/* WITH RECURSIVE was specified */
-	bool		hasModifyingCTE;	/* has INSERT/UPDATE/DELETE in WITH */
-	bool		hasForUpdate;	/* FOR [KEY] UPDATE/SHARE was specified */
-	bool		hasRowSecurity; /* rewriter has applied some RLS policy */
+	bool		hasAggs;		/* 是否在目标列表或having表达式中指定了聚合函数 has aggregates in tlist or havingQual */
+	bool		hasWindowFuncs; /* tlist是否包含窗口函数 has window functions in tlist */
+	bool		hasSubLinks;	/* 是否包含子查询 SubLink has subquery SubLink */
+	bool		hasDistinctOn;	/* 是否包含来自 DISTINCT ON 的distinct子句 distinctClause is from DISTINCT ON */
+	bool		hasRecursive;	/* 是否指定了 WITH RECURSIVE    WITH RECURSIVE was specified */
+	bool		hasModifyingCTE;	/* 是否在 WITH 子句中包含了INSERT/UPDATE/DELETE has INSERT/UPDATE/DELETE in WITH */
+	bool		hasForUpdate;	/* 是否指定了 FOR [KEY] UPDATE/SHARE was specified */
+	bool		hasRowSecurity; /* 重写器是否应用了行安全策略 rewriter has applied some RLS policy */
 
-	List	   *cteList;		/* WITH list (of CommonTableExpr's) */
+	List	   *cteList;		/* CTE列表 WITH list (of CommonTableExpr's) */
 
-	List	   *rtable;			/* list of range table entries */
-	FromExpr   *jointree;		/* table join tree (FROM and WHERE clauses) */
+	List	   *rtable;			/* 范围表项目列表 list of range table entries */
+	FromExpr   *jointree;		/* 表连接树(FROM 与 WHERE 子句) table join tree (FROM and WHERE clauses) */
 
-	List	   *targetList;		/* target list (of TargetEntry) */
+	List	   *targetList;		/* 目标列表(TargetEntry 的列表) target list (of TargetEntry) */
 
 	OnConflictExpr *onConflict; /* ON CONFLICT DO [NOTHING | UPDATE] */
 
-	List	   *returningList;	/* return-values list (of TargetEntry) */
+	List	   *returningList;	/* 返回值列表(TargetEntry的列表) return-values list (of TargetEntry) */
 
-	List	   *groupClause;	/* a list of SortGroupClause's */
+	List	   *groupClause;	/* SortGroupClause的列表 a list of SortGroupClause's */
 
-	List	   *groupingSets;	/* a list of GroupingSet's if present */
+	List	   *groupingSets;	/* 如果query带group语句，则有GroupingSet的列表 a list of GroupingSet's if present */
 
-	Node	   *havingQual;		/* qualifications applied to groups */
+	Node	   *havingQual;		/* 分组的having条件列表 qualifications applied to groups */
 
-	List	   *windowClause;	/* a list of WindowClause's */
+	List	   *windowClause;	/* 窗口子句列表 a list of WindowClause's */
 
-	List	   *distinctClause; /* a list of SortGroupClause's */
+	List	   *distinctClause; /* SortGroupClause的列表 a list of SortGroupClause's */
 
-	List	   *sortClause;		/* a list of SortGroupClause's */
+	List	   *sortClause;		/* SortGroupClause的列表 a list of SortGroupClause's */
 
-	Node	   *limitOffset;	/* # of result tuples to skip (int8 expr) */
-	Node	   *limitCount;		/* # of result tuples to return (int8 expr) */
+	Node	   *limitOffset;	/* Offset跳过元组数目(int8 表达式) # of result tuples to skip (int8 expr) */
+	Node	   *limitCount;		/* Limit返回元组数目(int8 表达式) # of result tuples to return (int8 expr) */
 
-	List	   *rowMarks;		/* a list of RowMarkClause's */
+	List	   *rowMarks;		/* RowMarkClause 列表 a list of RowMarkClause's */
 
-	Node	   *setOperations;	/* set-operation tree if this is top level of
+	Node	   *setOperations;	/* 如果是 UNION/INTERSECT/EXCEPT 的顶层查询，则为集合操作列表
+								 * set-operation tree if this is top level of
 								 * a UNION/INTERSECT/EXCEPT query */
 
-	List	   *constraintDeps; /* a list of pg_constraint OIDs that the query
+	List	   *constraintDeps; /* 确认查询语义是否合法时，所依赖约束对象的 oid 列表
+							     * a list of pg_constraint OIDs that the query
 								 * depends on to be semantically valid */
 
 	List	   *withCheckOptions;		/* a list of WithCheckOption's, which
