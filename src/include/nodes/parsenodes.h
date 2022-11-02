@@ -84,15 +84,22 @@ typedef uint32 AclMode;			/* a bitmask of privilege bits */
  *****************************************************************************/
 
 /*
+ * 分析器
  * Query -
+ * 	  解析与分析过程会将所有的语句转换为一颗查询树，供重写器与计划器用于进一步的处理
  *	  Parse analysis turns all statements into a Query tree
  *	  for further processing by the rewriter and planner.
  *
+ *    功能语句(即不可优化的语句)会设置utilityStmt字段，而Query结构本身基本上是空的。
+ *    DECLARE CURSOR 是一个特例，它的形式与 SELECT 类似，但原始的DeclareCursorStmt会
+ *    被放在 utilityStmt 字段中
  *	  Utility statements (i.e. non-optimizable statements) have the
  *	  utilityStmt field set, and the Query itself is mostly dummy.
  *	  DECLARE CURSOR is a special case: it is represented like a SELECT,
  *	  but the original DeclareCursorStmt is stored in utilityStmt.
  *
+ *    计划过程会将查询树转换为一颗计划树，计划树的根节点是一个 PlannedStmt 结构
+ *    执行器不会用到查询树结构
  *	  Planning converts a Query tree into a Plan tree headed by a PlannedStmt
  *	  node --- the Query structure is not used by the executor.
  */
@@ -1256,7 +1263,8 @@ typedef struct UpdateStmt
 	WithClause *withClause;		/* WITH clause */
 } UpdateStmt;
 
-/* ----------------------
+/* 解析器
+ *  ----------------------
  *		Select Statement
  *
  * A "simple" SELECT is represented in the output of gram.y by a single
