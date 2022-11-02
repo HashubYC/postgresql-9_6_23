@@ -147,42 +147,54 @@ typedef struct PlannerInfo
 {
 	NodeTag		type;
 
-	Query	   *parse;			/* the Query being planned */
+	Query	   *parse;			/* 被计划的查询 the Query being planned */
 
-	PlannerGlobal *glob;		/* global info for current planner run */
+	PlannerGlobal *glob;		/* 当前计划器运行时的全局信息 global info for current planner run */
 
-	Index		query_level;	/* 1 at the outermost Query */
+	Index		query_level;	/* 最外层查询为1 1 at the outermost Query */
 
-	struct PlannerInfo *parent_root;	/* NULL at outermost Query */
+	struct PlannerInfo *parent_root;	/* 最外层查询为NULL NULL at outermost Query */
 
 	/*
+	 * plan_params 包含着当前计划中的查询层次需要对低层查询暴露的表达式。
+	 * outer_params 包含着PARAM_EXEC参数中的paramId列表，这些参数是外
+	 * 部查询层次对当前查询层次所暴露的。
 	 * plan_params contains the expressions that this query level needs to
 	 * make available to a lower query level that is currently being planned.
 	 * outer_params contains the paramIds of PARAM_EXEC Params that outer
 	 * query levels will make available to this query level.
 	 */
-	List	   *plan_params;	/* list of PlannerParamItems, see below */
+	List	   *plan_params;	/* PlannerParamItems的列表, 见下 list of PlannerParamItems, see below */
 	Bitmapset  *outer_params;
 
 	/*
+	 * simple_rel_array 持有着指向"基础关系" 与 "其他关系"的指针 (详情参考
+	 * RelOptInfo的注释)。它由rangetable index所索引（因此第0项总是废值）。
+	 * 当RTE并不与基础关系相对应，譬如连接的RTE，或未引用的视图RTE，或该
+	 * RelOptInfo还没有产生时，里面的项目可能为NULL。
 	 * simple_rel_array holds pointers to "base rels" and "other rels" (see
 	 * comments for RelOptInfo for more info).  It is indexed by rangetable
 	 * index (so entry 0 is always wasted).  Entries can be NULL when an RTE
 	 * does not correspond to a base relation, such as a join RTE or an
 	 * unreferenced view RTE; or if the RelOptInfo hasn't been made yet.
 	 */
-	struct RelOptInfo **simple_rel_array;		/* All 1-rel RelOptInfos */
-	int			simple_rel_array_size;	/* allocated size of array */
+	struct RelOptInfo **simple_rel_array;		/* 所有单个关系的RelOptInfos All 1-rel RelOptInfos */
+	int			simple_rel_array_size;	/* 数组分配的大小 allocated size of array */
 
 	/*
+	 * simple_rte_array 与simple_rel_array 长度相同，且持有指向关联范围表项的指针。
+	 * 这使得我们能避免执行 rt_fetch(), 当需要展开很大的继承集时会很慢。
 	 * simple_rte_array is the same length as simple_rel_array and holds
 	 * pointers to the associated rangetable entries.  This lets us avoid
 	 * rt_fetch(), which can be a bit slow once large inheritance sets have
 	 * been expanded.
 	 */
-	RangeTblEntry **simple_rte_array;	/* rangetable as an array */
+	RangeTblEntry **simple_rte_array;	/* rangetable的数组 rangetable as an array */
 
 	/*
+	 * all_baserels是所有查询所涉及基本关系的关系ID列表（但不含“其他关系”的ID）
+	 * 也就是说，最终连接时，所需构建的关系标识符。该字段是由make_one_rel计算的。
+	 * 计算发生于计算Paths之前。
 	 * all_baserels is a Relids set of all base relids (but not "other"
 	 * relids) in the query; that is, the Relids identifier of the final join
 	 * we need to form.  This is computed in make_one_rel, just before we
@@ -191,6 +203,9 @@ typedef struct PlannerInfo
 	Relids		all_baserels;
 
 	/*
+	 * nullable_baserels 是在进行外连接的jointree中那些可空的基础关系的ID集合。
+     * 这些关系可能在WHERE子句，SELECT目标列表或其他地方产生空值。该字段由函数
+     * deconstruct_jointree 负责计算。
 	 * nullable_baserels is a Relids set of base relids that are nullable by
 	 * some outer join in the jointree; these are rels that are potentially
 	 * nullable below the WHERE clause, SELECT targetlist, etc.  This is
@@ -199,6 +214,10 @@ typedef struct PlannerInfo
 	Relids		nullable_baserels;
 
 	/*
+	 * join_rel_list是一个列表，在计划过程中连接关系的 RelOptInfos 都放在这里。
+     * 对于比较小的问题，我们只是简单的扫过这个列表来完成查找。但当连接很多关系时，
+     * 我们会使用散列表来加速查询。散列表当且仅当 join_rel_hash 不为空时存在且
+     * 有效。注意即使用散列表查找时，我们依然会维护列表，这会简化 GEQO 的相关问题。
 	 * join_rel_list is a list of all join-relation RelOptInfos we have
 	 * considered in this planning run.  For small problems we just scan the
 	 * list to do lookups, but when there are many join relations we build a
@@ -207,102 +226,108 @@ typedef struct PlannerInfo
 	 * even when using the hash table for lookups; this simplifies life for
 	 * GEQO.
 	 */
-	List	   *join_rel_list;	/* list of join-relation RelOptInfos */
-	struct HTAB *join_rel_hash; /* optional hashtable for join relations */
+	List	   *join_rel_list;	/* 连接关系的RelOptInfos list of join-relation RelOptInfos */
+	struct HTAB *join_rel_hash; /* 连接关系的散列表，可选 optional hashtable for join relations */
 
 	/*
+	 * 当使用动态规划进行连接搜索时，join_rel_level[k] 是第k层的连接关系RelOptInfos列表。
+     * 新的连接关系RelOptInfos会自动添加到join_rel_level[join_cur_level]中，
+     * 而join_cur_level为当前层级。如果没用到动态规划，join_rel_level 则为空。
 	 * When doing a dynamic-programming-style join search, join_rel_level[k]
 	 * is a list of all join-relation RelOptInfos of level k, and
 	 * join_cur_level is the current level.  New join-relation RelOptInfos are
 	 * automatically added to the join_rel_level[join_cur_level] list.
 	 * join_rel_level is NULL if not in use.
 	 */
-	List	  **join_rel_level; /* lists of join-relation RelOptInfos */
-	int			join_cur_level; /* index of list being extended */
+	List	  **join_rel_level; /* 连接关系RelOptInfo的列表 lists of join-relation RelOptInfos */
+	int			join_cur_level; /* 待追加列表的序号 index of list being extended */
 
-	List	   *init_plans;		/* init SubPlans for query */
+	List	   *init_plans;		/* 查询的初始SubPlans init SubPlans for query */
 
-	List	   *cte_plan_ids;	/* per-CTE-item list of subplan IDs */
+	List	   *cte_plan_ids;	/* 子计划的ID列表，每个CTE对应一个 per-CTE-item list of subplan IDs */
 
-	List	   *multiexpr_params;		/* List of Lists of Params for
+	List	   *multiexpr_params;		/* MULTIEXPR子查询输出用到的双层嵌套参数列表 List of Lists of Params for
 										 * MULTIEXPR subquery outputs */
 
-	List	   *eq_classes;		/* list of active EquivalenceClasses */
+	List	   *eq_classes;		/* 活跃的EquivalenceClasses列表 list of active EquivalenceClasses */
 
-	List	   *canon_pathkeys; /* list of "canonical" PathKeys */
+	List	   *canon_pathkeys; /* "标准" PathKeys 的列表 list of "canonical" PathKeys */
 
-	List	   *left_join_clauses;		/* list of RestrictInfos for
+	List	   *left_join_clauses;		/* RestrictInfos列表，用于左连接子句 list of RestrictInfos for
 										 * mergejoinable outer join clauses
 										 * w/nonnullable var on left */
 
-	List	   *right_join_clauses;		/* list of RestrictInfos for
+	List	   *right_join_clauses;		/* RestrictInfos列表，用于右连接子句 list of RestrictInfos for
 										 * mergejoinable outer join clauses
 										 * w/nonnullable var on right */
 
-	List	   *full_join_clauses;		/* list of RestrictInfos for
+	List	   *full_join_clauses;		/* RestrictInfos列表，用于完全连接子句 list of RestrictInfos for
 										 * mergejoinable full join clauses */
 
-	List	   *join_info_list; /* list of SpecialJoinInfos */
+	List	   *join_info_list; /* SpecialJoinInfos 的列表 list of SpecialJoinInfos */
 
-	List	   *append_rel_list;	/* list of AppendRelInfos */
+	List	   *append_rel_list;	/* AppendRelInfos 的列表 list of AppendRelInfos */
 
-	List	   *rowMarks;		/* list of PlanRowMarks */
+	List	   *rowMarks;		/* PlanRowMarks 的列表 list of PlanRowMarks */
 
-	List	   *placeholder_list;		/* list of PlaceHolderInfos */
+	List	   *placeholder_list;		/* ForeignKeyOptInfos 的列表 PlaceHolderInfos 的列表 list of PlaceHolderInfos */
 
-	List	   *fkey_list;		/* list of ForeignKeyOptInfos */
+	List	   *fkey_list;		/* ForeignKeyOptInfos 的列表 list of ForeignKeyOptInfos */
 
-	List	   *query_pathkeys; /* desired pathkeys for query_planner() */
+	List	   *query_pathkeys; /* query_planner()期望的pathkeys desired pathkeys for query_planner() */
 
-	List	   *group_pathkeys; /* groupClause pathkeys, if any */
-	List	   *window_pathkeys;	/* pathkeys of bottom window, if any */
-	List	   *distinct_pathkeys;		/* distinctClause pathkeys, if any */
-	List	   *sort_pathkeys;	/* sortClause pathkeys, if any */
+	List	   *group_pathkeys; /* groupClause的pathkeys, 如果有的话 groupClause pathkeys, if any */
+	List	   *window_pathkeys;	/* 底部窗口的pathkeys, 如果有的话 pathkeys of bottom window, if any */
+	List	   *distinct_pathkeys;		/* distinctClause的pathkeys, 如果有的话 distinctClause pathkeys, if any */
+	List	   *sort_pathkeys;	/* sortClause的pathkeys, 如果有的话 sortClause pathkeys, if any */
 
-	List	   *initial_rels;	/* RelOptInfos we are now trying to join */
+	List	   *initial_rels;	/* 我们现在正在尝试连接的RelOptInfos RelOptInfos we are now trying to join */
 
-	/* Use fetch_upper_rel() to get any particular upper rel */
+	/* 使用fetch_upper_rel()来获取任意特定的上层关系 Use fetch_upper_rel() to get any particular upper rel */
 	List	   *upper_rels[UPPERREL_FINAL + 1]; /* upper-rel RelOptInfos */
 
-	/* Result tlists chosen by grouping_planner for upper-stage processing */
+	/* grouping_planner针对上层处理过程选择的目标列表 Result tlists chosen by grouping_planner for upper-stage processing */
 	struct PathTarget *upper_targets[UPPERREL_FINAL + 1];
 
 	/*
+	 * grouping_planner会将最终处理过后的targetlist回传至此。在最终计划最顶层的目标列表中会用到
 	 * grouping_planner passes back its final processed targetlist here, for
 	 * use in relabeling the topmost tlist of the finished Plan.
 	 */
 	List	   *processed_tlist;
 
-	/* Fields filled during create_plan() for use in setrefs.c */
-	AttrNumber *grouping_map;	/* for GroupingFunc fixup */
-	List	   *minmax_aggs;	/* List of MinMaxAggInfos */
+	/* create_plan()期间填充的字段，定义于setrefs.c Fields filled during create_plan() for use in setrefs.c */
+	AttrNumber *grouping_map;	/* 针对GroupingFunc的修补 for GroupingFunc fixup */
+	List	   *minmax_aggs;	/* MinMaxAggInfos列表 List of MinMaxAggInfos */
 
-	MemoryContext planner_cxt;	/* context holding PlannerInfo */
+	MemoryContext planner_cxt;	/* 持有PlannerInfo的上下文 context holding PlannerInfo */
 
-	double		total_table_pages;		/* # of pages in all tables of query */
+	double		total_table_pages;		/* 查询涉及到所有表的页面总数 # of pages in all tables of query */
 
-	double		tuple_fraction; /* tuple_fraction passed to query_planner */
-	double		limit_tuples;	/* limit_tuples passed to query_planner */
+	double		tuple_fraction; /* 传递给查询计划器的tuple_fraction tuple_fraction passed to query_planner */
+	double		limit_tuples;	/* 传递给查询计划器的limit_tuples limit_tuples passed to query_planner */
 
-	bool		hasInheritedTarget;		/* true if parse->resultRelation is an
+	bool		hasInheritedTarget;		/* 若parse->resultRelation为继承的子关系则为真 
+										 * true if parse->resultRelation is an
 										 * inheritance child rel */
-	bool		hasJoinRTEs;	/* true if any RTEs are RTE_JOIN kind */
-	bool		hasLateralRTEs; /* true if any RTEs are marked LATERAL */
-	bool		hasDeletedRTEs; /* true if any RTE was deleted from jointree */
-	bool		hasHavingQual;	/* true if havingQual was non-null */
-	bool		hasPseudoConstantQuals; /* true if any RestrictInfo has
+	bool		hasJoinRTEs;	/* 如果任意RTEs为RTE_JOIN类别则为真 true if any RTEs are RTE_JOIN kind */
+	bool		hasLateralRTEs; /* 如果任意RTEs被标记为LATERAL则为真 true if any RTEs are marked LATERAL */
+	bool		hasDeletedRTEs; /* 如果任意RTEs从连接树中被删除则为真 true if any RTE was deleted from jointree */
+	bool		hasHavingQual;	/* 如果havingQual非空则为真 true if havingQual was non-null */
+	bool		hasPseudoConstantQuals; /* 如果任意RestrictInfo包含 pseudoconstant = true则为真 
+										 * true if any RestrictInfo has
 										 * pseudoconstant = true */
-	bool		hasRecursion;	/* true if planning a recursive WITH item */
+	bool		hasRecursion;	/* 如果计划中包含递归WITH项则为真 true if planning a recursive WITH item */
 
-	/* These fields are used only when hasRecursion is true: */
-	int			wt_param_id;	/* PARAM_EXEC ID for the work table */
-	struct Path *non_recursive_path;	/* a path for non-recursive term */
+	/* 当hasRecursion为真时，会使用以下字段 These fields are used only when hasRecursion is true: */
+	int			wt_param_id;	/* 工作表上PARAM_EXEC的ID PARAM_EXEC ID for the work table */
+	struct Path *non_recursive_path;	/* 非递归项的路径 a path for non-recursive term */
 
-	/* These fields are workspace for createplan.c */
-	Relids		curOuterRels;	/* outer rels above current node */
-	List	   *curOuterParams; /* not-yet-assigned NestLoopParams */
+	/* 这些字段是createplan.c的工作变量 These fields are workspace for createplan.c */
+	Relids		curOuterRels;	/* 当前节点外部的关系 outer rels above current node */
+	List	   *curOuterParams; /* 尚未赋值的NestLoopParams not-yet-assigned NestLoopParams */
 
-	/* optional private data for join_search_hook, e.g., GEQO */
+	/* 可选的join_search_hook私有数据, 例如, GEQO  optional private data for join_search_hook, e.g., GEQO */
 	void	   *join_search_private;
 } PlannerInfo;
 
@@ -777,10 +802,10 @@ typedef struct PathKey
 {
 	NodeTag		type;
 
-	EquivalenceClass *pk_eclass;	/* the value that is ordered */
-	Oid			pk_opfamily;	/* btree opfamily defining the ordering */
-	int			pk_strategy;	/* sort direction (ASC or DESC) */
-	bool		pk_nulls_first; /* do NULLs come before normal values? */
+	EquivalenceClass *pk_eclass;	/* 值是否有序 the value that is ordered */
+	Oid			pk_opfamily;	/* 用于定义顺序的B树操作符族 btree opfamily defining the ordering */
+	int			pk_strategy;	/* 排序方向(ASC or DESC) sort direction (ASC or DESC) */
+	bool		pk_nulls_first; /* NULL是否排序在常规值之前 do NULLs come before normal values? */
 } PathKey;
 
 
@@ -878,25 +903,25 @@ typedef struct Path
 {
 	NodeTag		type;
 
-	NodeTag		pathtype;		/* tag identifying scan/join method */
+	NodeTag		pathtype;		/* 标识 scan/join 方法的标签 tag identifying scan/join method */
 
-	RelOptInfo *parent;			/* the relation this path can build */
-	PathTarget *pathtarget;		/* list of Vars/Exprs, cost, width */
+	RelOptInfo *parent;			/* 路径所基于的关系 the relation this path can build */
+	PathTarget *pathtarget;		/* Vars/Exprs的列表, 代价, 宽度 list of Vars/Exprs, cost, width */
 
-	ParamPathInfo *param_info;	/* parameterization info, or NULL if none */
+	ParamPathInfo *param_info;	/* 参数化信息, 如果没有则为NULL parameterization info, or NULL if none */
 
-	bool		parallel_aware; /* engage parallel-aware logic? */
-	bool		parallel_safe;	/* OK to use as part of parallel plan? */
-	int			parallel_workers;		/* desired # of workers; 0 = not
-										 * parallel */
+	bool		parallel_aware; /* 涉及到并行相关的逻辑? engage parallel-aware logic? */
+	bool		parallel_safe;	/* 是否能作为并行执行计划的一部分? OK to use as part of parallel plan? */
+	int			parallel_workers;		/* 期待的并行工作进程数量； 0表示没有并行
+										 * desired # of workers; 0 = not parallel */
 
-	/* estimated size/costs for path (see costsize.c for more info) */
-	double		rows;			/* estimated number of result tuples */
-	Cost		startup_cost;	/* cost expended before fetching any tuples */
-	Cost		total_cost;		/* total cost (assuming all tuples fetched) */
+	/* 估计路径的尺寸或代价 (更多详情参考costsize.c) estimated size/costs for path (see costsize.c for more info) */
+	double		rows;			/* 预估结果元组数目 estimated number of result tuples */
+	Cost		startup_cost;	/* 获取任何元组前需要花费的代价 cost expended before fetching any tuples */
+	Cost		total_cost;		/* 总代价 (假设获取所有元组所需代价)  total cost (assuming all tuples fetched) */
 
-	List	   *pathkeys;		/* sort ordering of path's output */
-	/* pathkeys is a List of PathKey nodes; see above */
+	List	   *pathkeys;		/* 路径输出的排序顺序 sort ordering of path's output */
+	/* pathkeys 是PathKey节点的列表，PathKey定义见上面 pathkeys is a List of PathKey nodes; see above */
 } Path;
 
 /* Macro for extracting a path's parameterization relids; beware double eval */
